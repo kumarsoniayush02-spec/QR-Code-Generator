@@ -38,8 +38,13 @@ function getContrastRatio(hex1, hex2) {
 /* ─── Validation Helpers ─── */
 function validateUrl(value) {
   if (!value.trim()) return 'URL is required';
+  // Auto-prepend https:// if no protocol is provided
+  let urlString = value.trim();
+  if (!/^https?:\/\//i.test(urlString)) {
+    urlString = 'https://' + urlString;
+  }
   try {
-    const url = new URL(value);
+    const url = new URL(urlString);
     if (!['http:', 'https:'].includes(url.protocol)) return 'URL must start with http:// or https://';
     return null;
   } catch {
@@ -237,7 +242,11 @@ export default function App() {
   /* ─── Payload computation ─── */
   const getPayload = useCallback(() => {
     switch (qrType) {
-      case 'url': return urlInput.trim() || 'https://example.com';
+      case 'url': {
+        let url = urlInput.trim() || 'https://example.com';
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        return url;
+      }
       case 'text': return textInput || 'Hello World';
       case 'email': return `mailto:${emailInput.email}?subject=${encodeURIComponent(emailInput.subject)}&body=${encodeURIComponent(emailInput.body)}`;
       case 'phone': return `tel:${phoneInput}`;

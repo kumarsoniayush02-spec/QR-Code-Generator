@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import {
   QrCode, Download, History, Sliders,
@@ -76,6 +76,50 @@ function validateText(value) {
   if (!value.trim()) return 'Text content is required';
   if (value.length > 2000) return 'Text is too long — QR code may not be scannable';
   return null;
+}
+
+/* ─── QR Code Error Boundary ─── */
+class QRCodeErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('QR Code render failed:', error, info);
+  }
+
+  // Reset error state when children (payload, settings) change
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 py-10 px-6 text-center">
+          <AlertTriangle size={32} className="text-amber-400" />
+          <p className="text-sm font-semibold text-text-primary">QR Code too complex to render</p>
+          <p className="text-xs text-text-muted max-w-xs">
+            The data is too large to generate a scannable QR code. Try shortening the content (especially the email body).
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /* ─── Content Type Tabs Configuration ─── */
@@ -667,16 +711,32 @@ export default function App() {
                     type="text"
                     placeholder="Subject line (optional)"
                     value={emailInput.subject}
-                    onChange={(e) => setEmailInput({ ...emailInput, subject: e.target.value })}
+                    onChange={(e) => { setTouched(true); setEmailInput({ ...emailInput, subject: e.target.value }); }}
                     className="input-field"
                   />
-                  <textarea
-                    placeholder="Body message (optional)"
-                    value={emailInput.body}
-                    onChange={(e) => setEmailInput({ ...emailInput, body: e.target.value })}
-                    rows={2}
-                    className="input-field resize-none"
-                  />
+                  <div className="space-y-1">
+                    <textarea
+                      placeholder="Body message (optional)"
+                      value={emailInput.body}
+                      onChange={(e) => { setTouched(true); setEmailInput({ ...emailInput, body: e.target.value }); }}
+                      rows={4}
+                      className="input-field resize-vertical"
+                    />
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-text-muted">
+                        {emailInput.body.length > 500
+                          ? 'Long body — QR density will increase'
+                          : 'Longer bodies create denser QR codes'}
+                      </span>
+                      <span className={`text-[10px] font-mono ${
+                        emailInput.body.length > 800 ? 'text-red-400'
+                        : emailInput.body.length > 500 ? 'text-amber-400'
+                        : 'text-text-muted'
+                      }`}>
+                        {emailInput.body.length} chars
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -982,32 +1042,34 @@ export default function App() {
 
             {/* QR Code Display */}
             <div className="qr-container mb-6 w-full flex items-center justify-center">
-              <div className={`rounded-2xl overflow-hidden ${theme === 'light' ? 'bg-white shadow-xl' : 'bg-white/[0.06] ring-1 ring-white/[0.08]'}`} style={{ display: 'inline-block', padding: `${qrMargin}px` }}>
-                <QRCodeCanvas
-                  key={`canvas-${currentPayload}-${fgColor}-${bgColor}-${errorLevel}-${qrSize}-${qrMargin}-${logoDataUrl}`}
-                  id="qr-canvas"
-                  value={currentPayload}
-                  size={qrSize}
-                  fgColor={fgColor}
-                  bgColor={bgColor}
-                  level={errorLevel}
-                  includeMargin={false}
-                  {...logoSettings}
-                />
-                {/* Hidden SVG for SVG download */}
-                <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-                  <QRCodeSVG
-                    id="qr-svg"
-                    value={currentPayload}
+              <QRCodeErrorBoundary resetKey={`${currentPayload}-${fgColor}-${bgColor}-${errorLevel}-${qrSize}`}>
+                <div className={`rounded-2xl overflow-hidden ${theme === 'light' ? 'bg-white shadow-xl' : 'bg-white/[0.06] ring-1 ring-white/[0.08]'}`} style={{ display: 'inline-block', padding: `${qrMargin}px` }}>
+                  <QRCodeCanvas
+                    key={`canvas-${currentPayload}-${fgColor}-${bgColor}-${errorLevel}-${qrSize}-${qrMargin}-${logoDataUrl}`}
+                    id="qr-canvas"
+                    value={currentPayload || ' '}
                     size={qrSize}
                     fgColor={fgColor}
                     bgColor={bgColor}
                     level={errorLevel}
-                    includeMargin={marginModules > 0}
+                    includeMargin={false}
                     {...logoSettings}
                   />
+                  {/* Hidden SVG for SVG download */}
+                  <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+                    <QRCodeSVG
+                      id="qr-svg"
+                      value={currentPayload || ' '}
+                      size={qrSize}
+                      fgColor={fgColor}
+                      bgColor={bgColor}
+                      level={errorLevel}
+                      includeMargin={marginModules > 0}
+                      {...logoSettings}
+                    />
+                  </div>
                 </div>
-              </div>
+              </QRCodeErrorBoundary>
             </div>
 
             {/* Payload Preview */}
